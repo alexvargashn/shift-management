@@ -3,8 +3,10 @@
 ##
 ## Get latest from `dotnet new gitignore`
 
-# dotenv files
-.env
+# Track the committed proof .env (disposable reviewer credential).
+# Ignore local overrides the reviewer may create.
+.env.local
+.env.*.local
 
 # User-specific files
 *.rsuser
