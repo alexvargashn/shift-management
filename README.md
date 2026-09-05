@@ -1,5 +1,7 @@
 # Shift Management API (ERP SPM)
 
+**Resumen:** API ASP.NET Core para tomar y finalizar turnos en un ERP multiinstitución. Sin frontend. Arranque: `docker compose up -d` y luego `dotnet run --project src/Shifts.Api`. Identidad simulada con el header `X-User-Id` (`1` Ana, `2` Beto, `3` Carla). El README está en inglés por consistencia con el código; las rutas se mantienen en español porque son el contrato dado.
+
 Small ASP.NET Core Web API for taking and finishing shifts (`turnos`) in a multi-institution, multi-branch ERP. There is no frontend. A user may only see or change shifts that belong to their own institution and authorized branches. Institution and branch scope are derived server-side from `X-User-Id`; the client never supplies them.
 
 ## Routes
@@ -67,10 +69,10 @@ Taking the next shift is a work-queue claim, not an optimistic `rowversion` upda
 
 One parameterized statement selects the next pending row with `UPDLOCK, READPAST, ROWLOCK, READCOMMITTEDLOCK` and updates it in the same statement (`OUTPUT` returns the claimed row). `UPDLOCK` locks the chosen row for update. `READPAST` makes concurrent callers **skip** already-locked rows and claim the next available one, so two callers get different shifts. A single statement is atomic; no extra `BEGIN/COMMIT` is required.
 
-Three details make that dequeue correct under EF Core's SQL Server defaults:
+Three details keep that dequeue correct regardless of the database's snapshot setting:
 
 - `Status = 0` is a **literal** (`ShiftStatus.Pending`), not `@pending`. A parameter cannot match the filtered index `IX_Shifts_PendingSelection` (`[Status] = 0`). Without that seek the plan is scan + sort, `UPDLOCK` covers every pending row, and concurrent `READPAST` callers see an empty queue (HTTP 404) while other pending shifts still exist.
-- `READCOMMITTEDLOCK` forces lock-based `READ COMMITTED`. EF enables `READ_COMMITTED_SNAPSHOT`; version-store reads plus `TOP (1)` + `READPAST` can also report a false empty queue.
+- `READCOMMITTEDLOCK` forces the lock-based implementation of `READ COMMITTED`. If the database has `READ_COMMITTED_SNAPSHOT` enabled — off by default on a local/containerized SQL Server, on by default on Azure SQL Database — a plain `READ COMMITTED` read is served from the version store instead of taking locks, and `READPAST` can only skip rows that are genuinely locked. Forcing lock-based reads makes the dequeue take real row locks regardless of that server setting, so the claim behaves identically wherever it runs.
 - `INDEX(IX_Shifts_PendingSelection)` and `OPTION (MAXDOP 1)` keep the plan a single-row seek, never a parallel dequeue.
 
 Optimistic `rowversion` was rejected because every worker targets the same "next" row, which turns into a retry storm on a hot row.
@@ -87,6 +89,8 @@ Take-next uses `Database.SqlQueryRaw<ClaimedRow>` so the `OUTPUT` row is kept. F
 docker compose up -d
 dotnet test tests/Shifts.Tests
 ```
+
+Manual checks: `src/Shifts.Api/Shifts.Api.http`.
 
 Tests use `WebApplicationFactory` against a dedicated catalog `ShiftsDb_Tests` on the same SQL Server. They do not use the EF in-memory provider (it does not honor `UPDLOCK` / `READPAST`). Classes share an xUnit collection and the test project disables parallelization so they cannot drop the same database at the same time.
 
@@ -109,3 +113,4 @@ Cursor was used as an assistant. Architecture, concurrency, security, and persis
 - Use a table-valued parameter for large authorized-branch lists instead of one SQL parameter per id.
 - Add an audit trail of claims and finishes without changing the three required endpoints.
 - A dedicated design-time `DbContext` factory so `dotnet ef` never touches a live database.
+- Re-evaluate the forced `INDEX(IX_Shifts_PendingSelection)` hint: verify the optimizer chooses the filtered-index seek on its own and drop the hint to avoid coupling the query to the index name.

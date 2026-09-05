@@ -1,4 +1,3 @@
-using System.Net.Mime;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Shifts.Api.Data;
@@ -78,12 +77,14 @@ public sealed class CurrentUserMiddleware
     private static async Task WriteUnauthorizedAsync(HttpContext context)
     {
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        context.Response.ContentType = MediaTypeNames.Application.Json;
-        await context.Response.WriteAsJsonAsync(new ProblemDetails
-        {
-            Status = StatusCodes.Status401Unauthorized,
-            Title = "Unauthorized",
-            Detail = "The user could not be identified."
-        });
+        await context.Response.WriteAsJsonAsync(
+            new ProblemDetails
+            {
+                Status = StatusCodes.Status401Unauthorized,
+                Title = "Unauthorized",
+                Detail = "The user could not be identified."
+            },
+            options: null,
+            contentType: "application/problem+json");
     }
 }

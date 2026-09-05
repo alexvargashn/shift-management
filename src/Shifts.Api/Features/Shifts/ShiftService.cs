@@ -91,8 +91,10 @@ public sealed class ShiftService : IShiftService
         // IX_Shifts_PendingSelection ([Status] = 0). Without that seek the
         // plan becomes scan + sort, UPDLOCK covers every pending row, and
         // concurrent READPAST callers see an empty queue.
-        // READCOMMITTEDLOCK: EF enables READ_COMMITTED_SNAPSHOT; dequeue must
-        // take real locks, not version-store reads.
+        // READCOMMITTEDLOCK: if the database has READ_COMMITTED_SNAPSHOT enabled
+        // (off by default locally, on by default on Azure SQL), reads would be served
+        // from the version store and READPAST could not skip locked rows. Forcing
+        // lock-based READ COMMITTED makes the dequeue take real locks either way.
         // INDEX + MAXDOP 1: one-row seek, never a parallel dequeue plan.
         var sql = $"""
             WITH next AS (

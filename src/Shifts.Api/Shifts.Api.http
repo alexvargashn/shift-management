@@ -1,6 +1,50 @@
-@Shifts.Api_HostAddress = http://localhost:5137
+# Manual checks for the three required endpoints.
+# Fresh Development seed assumed: Ana claims 3 then 2 then 1.
+# Run the 409 (finish still-pending id 1) before take-next/finish-ok.
 
-GET {{Shifts.Api_HostAddress}}/weatherforecast/
+@host = http://localhost:5137
+@ana = 1
+@beto = 2
+@carla = 3
+@pendingShiftId = 1
+@inProgressShiftId = 3
+@foreignShiftId = 5
+
+### List pending — Ana (institution 1, branch 1 only): ids 3, 2, 1
+GET {{host}}/api/turnos/pendientes
+X-User-Id: {{ana}}
 Accept: application/json
 
-###
+### List pending — Beto (institution 1, branches 1 and 2): ids 3, 2, 4, 1
+GET {{host}}/api/turnos/pendientes
+X-User-Id: {{beto}}
+Accept: application/json
+
+### List pending — Carla (institution 2, branch 3): id 5
+GET {{host}}/api/turnos/pendientes
+X-User-Id: {{carla}}
+Accept: application/json
+
+### Take next — Ana (fresh seed claims id 3)
+POST {{host}}/api/turnos/tomar-siguiente
+X-User-Id: {{ana}}
+Accept: application/json
+
+### Finish OK — Ana finishes the shift just claimed (id 3 on a fresh seed)
+POST {{host}}/api/turnos/{{inProgressShiftId}}/finalizar
+X-User-Id: {{ana}}
+Accept: application/json
+
+### Finish 409 — Ana finishes a still-pending shift (run before take-next on id 1)
+POST {{host}}/api/turnos/{{pendingShiftId}}/finalizar
+X-User-Id: {{ana}}
+Accept: application/json
+
+### Finish 403 — Ana finishes Carla's shift (institution 2)
+POST {{host}}/api/turnos/{{foreignShiftId}}/finalizar
+X-User-Id: {{ana}}
+Accept: application/json
+
+### Unidentified 401 — missing X-User-Id
+GET {{host}}/api/turnos/pendientes
+Accept: application/json

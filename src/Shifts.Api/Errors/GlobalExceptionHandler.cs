@@ -21,7 +21,8 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
     }
 
     /// <summary>
-    /// Logs the unexpected failure without leaking internals to the client.
+    /// Logs the full exception for server-side diagnosis and returns a generic
+    /// ProblemDetails 500. The stack never goes to the client.
     /// </summary>
     /// <param name="httpContext">Current HTTP context.</param>
     /// <param name="exception">Unhandled exception.</param>
@@ -32,15 +33,19 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
         Exception exception,
         CancellationToken cancellationToken)
     {
-        _logger.LogError("Unhandled exception. ExceptionType={ExceptionType}", exception.GetType().Name);
+        _logger.LogError(exception, "Unhandled exception");
 
         httpContext.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        await httpContext.Response.WriteAsJsonAsync(new ProblemDetails
-        {
-            Status = StatusCodes.Status500InternalServerError,
-            Title = "Unexpected error",
-            Detail = "An unexpected error occurred."
-        }, cancellationToken);
+        await httpContext.Response.WriteAsJsonAsync(
+            new ProblemDetails
+            {
+                Status = StatusCodes.Status500InternalServerError,
+                Title = "Unexpected error",
+                Detail = "An unexpected error occurred."
+            },
+            options: null,
+            contentType: "application/problem+json",
+            cancellationToken: cancellationToken);
 
         return true;
     }
